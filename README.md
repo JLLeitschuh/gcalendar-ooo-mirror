@@ -114,35 +114,27 @@ case. Set it to `[]` if you have no such events — that also saves an API call 
 Matching is a case-insensitive substring of the title, so `'No Meeting Day'` catches
 `No Meeting Day!`. Any mirrored block overlapping one of those events is created with
 `autoDeclineMode: 'declineNone'` — it still shows you busy, it just declines nothing. If the
-protected event later moves or is deleted, the affected blocks are reconciled back to the normal
-auto-decline mode on the next run.
+protected event later moves or is deleted, the affected blocks reconcile back to normal
+auto-decline on the next run.
 
-Notes:
+Two things to be aware of: a personal event that only *partly* overlaps a protected event loses
+auto-decline for its whole duration, and with `declineOnlyNewConflictingInvitations` meetings you
+have already accepted were never at risk in the first place — this guard matters for invitations
+that arrive after a block covers the slot.
 
-- The check uses the API's full-text `q` filter, so it costs one extra `events.list` call per
-  configured title per run. Set the list to `[]` to skip it entirely.
-- All-day protected events are resolved to **local** midnight, so an 8pm personal event on a
-  protected day is covered, and an event the following day is not.
-- Suppression is per-block, not per-overlap: a personal event that only partly overlaps a
-  protected event loses auto-decline for its whole duration.
-- Remember that with `declineOnlyNewConflictingInvitations`, meetings you have *already* accepted
-  are never auto-declined in the first place. This guard matters for invitations that arrive
-  after a block already covers the slot.
+## If a run aborts
 
-## Safety behavior
+The script fails loudly rather than deleting blocks it isn't sure about, so an aborted run means
+one of two guards tripped, and Apps Script will email you the failure:
 
-- **Lock.** Overlapping trigger runs are skipped rather than racing.
-- **Delete cap.** More than `MAX_DELETES_PER_RUN` (25) deletions in a single run aborts the run
-  before deleting anything.
-- **Access-loss guard.** If the source calendar returns *zero events at all* while live mirrors
-  exist — the signature of a revoked share — the run aborts rather than wiping the mirrors. If the
-  personal calendar genuinely is empty, set `ALLOW_EMPTY_SOURCE = true` for one run.
-- **Deletes before creates.** A moved event's old block is removed before the new one lands, so
-  auto-decline can't fire against a stale overlap.
-- **Backoff.** Transient `429`/`5xx`/rate-limit errors are retried with exponential backoff.
-- **Fallback.** If the tenant rejects `outOfOffice`, the script logs a warning and creates plain
-  busy events for the rest of the run (`FALLBACK_TO_BUSY_EVENT`). Still blocks free/busy; no
-  auto-decline.
+- *"source calendar returned 0 events at all but N live mirrors exist"* — the personal calendar
+  share was probably revoked. Check it, or set `ALLOW_EMPTY_SOURCE = true` for one run if the
+  calendar really is empty.
+- *"refusing to delete N mirrors in one run"* — more than `MAX_DELETES_PER_RUN` (25) blocks were
+  about to be removed. Confirm that's expected, then raise the limit.
+
+Nothing is deleted in either case. See [AGENTS.md](AGENTS.md) for the rest of the safety
+machinery.
 
 ## Configuration
 
@@ -164,10 +156,9 @@ All tunables are at the top of `Config.gs`. The ones most likely to matter:
 ./test/run.sh
 ```
 
-Runs the real `.gs` sources against a stubbed in-memory Calendar API: create, idempotent re-run,
-event moved, event marked Free, orphan cleanup, both safety guards, the work-hours filter, the
-busy-event fallback, and protected-event auto-decline suppression including the all-day local
-midnight boundary cases. No network, no real calendar touched.
+Runs the real `.gs` sources against a stubbed in-memory Calendar API. No network, no Google
+account, no real calendar touched. See [AGENTS.md](AGENTS.md) for what the suite covers and how
+the harness works.
 
 ## Limitations
 
@@ -186,8 +177,10 @@ midnight boundary cases. No network, no real calendar touched.
 
 ## Contributing
 
-Issues and pull requests welcome. Please run `./test/run.sh` before opening a PR — it needs only
-Node, no network and no Google account, and every behavioral change should come with a case.
+Issues and pull requests welcome. Start with [AGENTS.md](AGENTS.md), which covers the
+architecture, the reconcile invariants, and the Calendar API behavior that is easy to get wrong.
+Please run `./test/run.sh` before opening a PR — it needs only Node — and bring a test case for
+any behavioral change.
 
 ## License
 
