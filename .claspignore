@@ -1,0 +1,4 @@
+# Node-only test harness; not part of the Apps Script project.
+test/**
+README.md
+.gitignore
